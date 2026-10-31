@@ -1,4 +1,19 @@
-# Lab 04: Forms, Validation, and Session State
+# Step 18: Write `README.md`
+
+## What you will do
+
+Write project information in `README.md`.
+
+## File
+
+```text
+README.md
+```
+
+## Content
+
+```markdown
+# Lab 01: First Streamlit App
 
 ## Project Theme
 
@@ -6,61 +21,28 @@ EduRisk Analytics
 
 ## Description
 
-This Streamlit app is a student academic monitoring prototype.
-
-This lab continues from Lab 03 and improves the Risk Checker page using Streamlit forms, input validation, and session state.
-
-The app loads student data from students.csv, displays dashboard information, and allows users to check individual student risk levels with a reliable form-based workflow.
+This is my first Streamlit web app.
 
 ## Features
 
-```text
 - Sidebar navigation
-- Home page
-- Dashboard page
-- Student Data page
-- Risk Checker page
-- About page
-- Student dataset stored in students.csv
-- CSV data loading with Pandas
-- Missing CSV file error handling
-- Risk level calculation
-- Streamlit form
-- Form submit button
-- Empty student name validation
-- Supportive risk feedback messages
-- Session state risk-check history
-- Recent Risk Checks table
-- Clear History button
-- Ethics reminders
-```
+- Student data table
+- Dashboard metrics
 
 ## Tools Used
 
-```text
 - Python
 - Streamlit
 - Pandas
 - VS Code
-```
-
-## Required Files
-
-```text
-- app.py
-- students.csv
-- requirements.txt
-- README.md
-```
 
 ## How to Run
 
-```text
 streamlit run app.py
-```
 
 ## Student Information
 
 Name:
 Student ID:
 Class:
+```
