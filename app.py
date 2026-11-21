@@ -1,645 +1,716 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-from streamlit_option_menu import option_menu
+# CamBud — Cambodia Budget Analytics
 
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+import plotly.express as px
+
+# 1. PAGE CONFIGURATION
 st.set_page_config(
-    page_title="EduRisk Analytics - Lab 05",
-    page_icon="🎓",
+    page_title="CamBud Analytics",
+    page_icon=None,
     layout="wide"
 )
 
-# ---------- Custom CSS: dark slate and teal sidebar, metric cards ----------
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+# LOAD CSS
+def load_css():
+    """Load style.css from the same folder as app.py."""
+    css_path = Path(__file__).resolve().parent / "style.css"
 
-    /* Sidebar Background: Modern Deep Slate / Charcoal */
-    [data-testid="stSidebar"] {
-        background-color: #0b1120 !important;
-        border-right: 1px solid #1e293b;
-    }
+    if css_path.is_file():
+        css = css_path.read_text(encoding="utf-8")
+        st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+    else:
+        st.warning(
+            f"CSS file not found: {css_path.name}. "
+            "Using Streamlit's default styling."
+        )
 
-    [data-testid="stSidebar"] * {
-        font-family: 'Plus Jakarta Sans', sans-serif;
-    }
+load_css()
 
-    /* Original Metric Cards */
-    [data-testid="stMetric"] {
-        background-color: rgba(99, 102, 241, 0.08);
-        border: 1px solid rgba(99, 102, 241, 0.35);
-        border-radius: 12px;
-        padding: 14px 18px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
+# 2. LOAD CAMBODIAN BUDGET DATA
+@st.cache_data # Store result without execute the same function repeatedly 
+
+# Defines a function that receives a CSV file path 
+def load_budget_data(file_path):
+    """Read the translated MEF CSV file and cache it."""
+    return pd.read_csv(file_path)
+
+# Define the file location 
+DATA_PATH = Path(__file__).resolve().parent / "budget_data.csv"
+
+# Check whether the file exits 
+if not DATA_PATH.is_file():
+    st.error(
+        "budget_data.csv was not found. "
+        "Please place it in the same folder as app.py."
+    )
+    st.stop()
+
+# Try to load dataset and prevent unexpected CSV reading error
+try:
+    budget_df = load_budget_data(str(DATA_PATH))
+    
+except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError) as error:
+    st.error(
+        "Could not read budget_data.csv. Please check the file format. "
+        f"Details: {error}"
+    )
+    st.stop()
+
+# 3. CHECK DATA AND PREPARE COLUMNS
+
+# Define required columns
+required_columns = {
+    "Fiscal Year",
+    "Government Entity",
+    "Budget Category",
+    "Approved Budget (Million KHR)"
+}
+
+# Check the missing columns
+missing_columns = required_columns.difference(budget_df.columns)
+
+if missing_columns:
+    st.error(
+        "Missing required column(s) in budget_data.csv: "
+        + ", ".join(sorted(missing_columns))
+    )
+    st.stop() 
+
+# Convert numerical columns
+budget_df["Fiscal Year"] = pd.to_numeric(
+    budget_df["Fiscal Year"], errors="coerce" 
+)
+budget_df["Approved Budget (Million KHR)"] = pd.to_numeric(
+    budget_df["Approved Budget (Million KHR)"], errors="coerce"
 )
 
-def load_student_data():
-    try:
-        data = pd.read_csv("students.csv")
-        # students.csv has an unnamed index column; hide it from every table
-        data = data.loc[:, ~data.columns.str.startswith("Unnamed")]
-        return data
-    except FileNotFoundError:
-        st.error(
-            "students.csv was not found. Please place it in the same folder as app.py."
+# Clean text columns
+budget_df["Government Entity"] = (
+    budget_df["Government Entity"].astype("string").str.strip()
+)
+budget_df["Budget Category"] = (
+    budget_df["Budget Category"].astype("string").str.strip()
+)
+
+# Check invalid fiscal year
+if budget_df["Fiscal Year"].isna().any():
+    st.error("Fiscal Year contains empty or non-numeric values.")
+    st.stop()
+
+# Check empty text columns
+if budget_df["Government Entity"].isna().any() or budget_df["Budget Category"].isna().any():
+    st.error("Government Entity and Budget Category cannot be empty.")
+    st.stop()
+
+# Missing budget amounts from the original MEF file are intentionally retained.
+# They are excluded from calculations instead of being replaced with zero.
+valid_budget_df = budget_df.dropna(
+    subset=["Approved Budget (Million KHR)"]
+).copy()
+
+if valid_budget_df.empty:
+    st.error("There are no valid budget amounts available for analysis.")
+    st.stop()
+
+# 4. DATA SUMMARY AND HELPER FUNCTIONS
+
+# Format budget values
+def format_budget(value):
+    """Format budget values in million KHR."""
+    return f"{value:,.2f}"
+
+# Prepare chart appearance 
+def prepare_chart(fig, height=350):
+    """Apply consistent chart layout and Times New Roman font."""
+    fig.update_layout(
+        height=height,
+        font=dict(
+            family="Times New Roman",
+            size=13,
+            color="#183247"
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#FFFFFF",
+        margin=dict(l=15, r=15, t=45, b=15),
+        legend_title_text=""
+    )
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(gridcolor="#E4EEF5", zeroline=False)
+    return fig
+
+# Style budget tables
+def styled_budget_table(dataframe):
+    """Format budget amounts in tables without changing source values."""
+    if "Approved Budget (Million KHR)" not in dataframe.columns:
+        return dataframe
+
+    return dataframe.style.format(
+        {"Approved Budget (Million KHR)": "{:,.2f}"},
+        na_rep="Not reported"
+    )
+
+# 5. SIDEBAR NAVIGATION
+
+# Define page labels
+PAGE_LABELS = {
+    "Home": "Home",
+    "Dashboard": "Dashboard",
+    "Budget Analysis": "Budget Analysis",
+    "Entity Analysis": "Entity Analysis",
+    "Data Explorer": "Data Explorer",
+    "About": "About"
+}
+
+# Create the sidebar
+with st.sidebar:
+    st.title("CamBud Menu")
+    st.caption("Cambodia Budget Analytics")
+    st.divider()
+    
+    # Page navigation 
+    selected_page = st.radio(
+        "Select Page",
+        list(PAGE_LABELS.keys()),
+        format_func=lambda page: PAGE_LABELS[page]
+    )
+
+    # Display the data source 
+    st.divider()
+    st.caption("DATA SOURCE")
+    st.markdown(
+        "[Ministry of Economy and Finance (MEF)]"
+        "(https://data.mef.gov.kh/datasets/pd_69942a5e9eaed400071a6ca9)"
+    )
+    st.caption("Approved Budget Law · FY2021–FY2026")
+
+# 6. PAGE-SPECIFIC FILTER HELPER
+
+# Get available filter options
+available_years = sorted(
+    valid_budget_df["Fiscal Year"].astype(int).unique().tolist()
+)
+available_entities = sorted(
+    valid_budget_df["Government Entity"].dropna().unique().tolist()
+)
+available_categories = sorted(
+    valid_budget_df["Budget Category"].dropna().unique().tolist()
+)
+
+# Define the filter function
+def render_page_filters(page_name, include_year=True,
+                        include_category=True, include_entity=True):
+    """Show only the filters needed on the current page."""
+    
+    # Create filter columns 
+    st.markdown("### Filters")
+    filter_columns = sum(
+        [include_year, include_category, include_entity]
+    )
+    columns = st.columns(max(filter_columns, 1))
+    
+    # Set default selections
+    selected_years = available_years
+    selected_categories = available_categories
+    selected_entities = available_entities
+    column_index = 0 # tracks which columns should contain the next filter 
+    
+    # Display the multiselect filters
+    # Fiscal year filter 
+    if include_year:
+        with columns[column_index]:
+            selected_years = st.multiselect(
+                "Fiscal Year",
+                available_years,
+                default=available_years,
+                key=f"{page_name}_years"
+            )
+        column_index += 1
+    
+    # Budgets category filter 
+    if include_category:
+        with columns[column_index]:
+            selected_categories = st.multiselect(
+                "Budget Category",
+                available_categories,
+                default=available_categories,
+                key=f"{page_name}_categories"
+            )
+        column_index += 1
+    
+    # Government entity filter 
+    if include_entity:
+        with columns[column_index]:
+            selected_entities = st.multiselect(
+                "Government Entity",
+                available_entities,
+                default=available_entities,
+                key=f"{page_name}_entities"
+            )
+    
+    # Filter the data and calculate missing values
+    # Apply selected filter 
+    selected_source_rows = budget_df[
+        budget_df["Fiscal Year"].isin(selected_years)
+        & budget_df["Budget Category"].isin(selected_categories)
+        & budget_df["Government Entity"].isin(selected_entities)
+    ].copy()
+    
+    # Remove missing budget amounts for calculations
+    selected_data = selected_source_rows.dropna(
+        subset=["Approved Budget (Million KHR)"]
+    ).copy()
+    
+    # Count missing budget amounts 
+    missing_count = int(
+        selected_source_rows["Approved Budget (Million KHR)"].isna().sum()
+    )
+    
+    # Check whether filtered data is empty 
+    if selected_data.empty:
+        st.warning(
+            "No budget records match the selected filters. "
+            "Please adjust your selections."
         )
         st.stop()
 
+    return selected_data, missing_count
 
-student_df = load_student_data()
+# Calculate budgets summary 
+def calculate_budget_summary(data):
+    """Calculate key budget totals for a filtered page dataset."""
+    
+    # Calculate total budget
+    total = data["Approved Budget (Million KHR)"].sum()
+    
+    # Calculate current expenditure 
+    current = data.loc[
+        data["Budget Category"] == "Current Expenditure",
+        "Approved Budget (Million KHR)"
+    ].sum()
+    
+    # Calculate capital expenditure 
+    capital = data.loc[
+        data["Budget Category"] == "Capital Expenditure",
+        "Approved Budget (Million KHR)"
+    ].sum()
+    
+    # Count government entities 
+    entities = data["Government Entity"].nunique()
+    return total, current, capital, entities
 
-def get_risk_level(score, attendance):
-    if score < 60 or attendance < 60:
-        return "High Risk"
-    elif score < 75 or attendance < 75:
-        return "Medium Risk"
-    else:
-        return "Low Risk"
+# 7. HOME PAGE
 
-student_df["Risk Level"] = student_df.apply(
-    lambda row: get_risk_level(row["Score"], row["Attendance"]),
-    axis=1
-)
-
-# ---------- Session state: temporary risk-check history (used by Risk Checker) ----------
-# Temporary memory for recent risk checks (lost when the browser session ends).
-if "risk_history" not in st.session_state:
-    st.session_state["risk_history"] = []
-
-if "history_cleared" not in st.session_state:
-    st.session_state["history_cleared"] = False
-
-
-def clear_risk_history():
-    """Callback for the Clear History button (runs BEFORE the page redraws)."""
-    st.session_state["risk_history"] = []
-    st.session_state["history_cleared"] = True
-
-
-# ---------- Helper functions ----------
-def style_risk_table(df):
-    """Color the Risk Level column: green, orange, red."""
-    risk_styles = {
-        "Low Risk": "color: #22c55e; font-weight: 600;",
-        "Medium Risk": "color: #f59e0b; font-weight: 600;",
-        "High Risk": "color: #ef4444; font-weight: 600;",
-    }
-
-    def color_risk(column):
-        return [risk_styles.get(value, "") for value in column]
-
-    return df.style.apply(color_risk, subset=["Risk Level"])
-
-
-def feature_card(icon, title, text):
-    """Small rounded card used on the Home and About pages."""
-    st.markdown(
-        f"""
-        <div style="background-color: rgba(20, 184, 166, 0.08); border: 1px solid rgba(20, 184, 166, 0.35);
-                    border-radius: 12px; padding: 16px 18px; height: 100%;">
-            <div style="font-size: 26px;">{icon}</div>
-            <div style="font-size: 16px; font-weight: 600; margin-top: 6px;">{title}</div>
-            <div style="font-size: 14px; opacity: 0.75; margin-top: 4px;">{text}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-# ---------- Sidebar: brand, menu, workspace, quick stats ----------
-with st.sidebar:
-    st.markdown(
-        """
-        <div style="padding: 10px 0 20px 0; border-bottom: 1px solid #1e293b; margin-bottom: 15px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 20px;">🎓</span>
-                <span style="font-size: 18px; font-weight: 700; color: #f8fafc; letter-spacing: -0.02em;">EduRisk Portal</span>
-            </div>
-            <p style="margin: 4px 0 0 0; font-size: 12px; color: #64748b;">Academic Performance Hub</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    selected_page = option_menu(
-        menu_title=None,
-        options=["Home", "Dashboard", "Student Data", "Risk Checker", "About"],
-        icons=["house-door", "grid", "card-checklist", "shield-exclamation", "info-circle"],
-        default_index=0,
-        key="main_menu",
-        styles={
-            "container": {
-                "padding": "0px",
-                "background-color": "transparent"
-            },
-            "icon": {
-                "color": "#64748b",
-                "font-size": "16px"
-            },
-            "nav-link": {
-                "font-size": "14px",
-                "font-weight": "500",
-                "color": "#94a3b8",
-                "text-align": "left",
-                "margin": "6px 0px",
-                "padding": "10px 14px",
-                "border-radius": "8px",
-                "border": "1px solid transparent",
-                "--hover-color": "#1e293b"
-            },
-            "nav-link-selected": {
-                "background-color": "#0f766e",
-                "color": "#ffffff",
-                "font-weight": "600",
-                "border": "1px solid #14b8a6"
-            },
-        }
-    )
-
-    st.markdown(
-        """
-        <div style="margin-top: 30px; padding: 12px; border-radius: 8px; background-color: #1e293b; border: 1px solid #334155;">
-            <p style="margin: 0; font-size: 11px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Workspace</p>
-            <p style="margin: 2px 0 0 0; font-size: 13px; color: #f1f5f9;">Lab 05 Active</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # Quick stats and report download
-    sidebar_total = len(student_df)
-    sidebar_avg_score = round(student_df["Score"].mean(), 1)
-    sidebar_high_risk = student_df[student_df["Risk Level"] == "High Risk"].shape[0]
-
-    st.markdown(
-        f"""
-        <div style="margin-top: 14px; padding: 12px; border-radius: 8px; background-color: #1e293b; border: 1px solid #334155;">
-            <p style="margin: 0 0 8px 0; font-size: 11px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Quick Stats</p>
-            <p style="margin: 0; font-size: 13px; color: #f1f5f9;">👥 Students: <b>{sidebar_total}</b></p>
-            <p style="margin: 4px 0 0 0; font-size: 13px; color: #f1f5f9;">📈 Avg Score: <b>{sidebar_avg_score}</b></p>
-            <p style="margin: 4px 0 0 0; font-size: 13px; color: #f1f5f9;">🔴 High Risk: <b>{sidebar_high_risk}</b></p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.write("")
-    st.download_button(
-        label="⬇️ Download Risk Report",
-        data=student_df.to_csv(index=False),
-        file_name="student_risk_report.csv",
-        mime="text/csv"
-    )
-
-# ---------- Pages ----------
-
+# Check the selected page
 if selected_page == "Home":
-    st.title("🎓 EduRisk Analytics")
-    st.subheader("Interactive Dashboard with Visualization and Filters")
-    st.write("Welcome to Lab 05.")
-    st.write(
-        "In this lab, the app improves the Dashboard page using "
-        "grouped summaries, interactive filters, Streamlit charts, and Plotly charts."
+    
+    # The page title and introduction 
+    st.title("CamBud | Cambodia Budget Analytics")
+    st.caption(
+        "Explore approved government budget allocations by fiscal year, "
+        "expenditure category, and government entity."
     )
-    st.success("Lab 05 app is running successfully!")
+    st.title("Welcome to CamBud")
+    st.subheader("Cambodia Government Budget Analytics")
+    
+    st.write(
+        "CamBud is an interactive web application for exploring Cambodia's "
+        "approved government budget allocations. It helps users understand "
+        "how budget allocations are distributed across fiscal years, "
+        "expenditure categories, and government entities."
+    )
 
-    # feature cards and risk overview
-    st.subheader("What You Can Do")
+    st.success("CamBud is running successfully!")
 
-    card1, card2, card3 = st.columns(3)
+    st.subheader("Project Overview")
+    overview_col1, overview_col2 = st.columns(2)
 
-    with card1:
-        feature_card("📊", "Dashboard", "Filter students, view summaries, and explore Plotly charts.")
+    with overview_col1:
+        st.markdown("**Main Features**")
+        st.write(
+            "- Dashboard overview and key budget indicators\n"
+            "- Current and capital expenditure analysis\n"
+            "- Government entity ranking\n"
+            "- Searchable data table and CSV export"
+        )
 
-    with card2:
-        feature_card("🗂️", "Student Data", "Inspect the CSV data and search by name or course.")
+    with overview_col2:
+        st.markdown("**Datasets Information**")
+        st.write(
+            "- Publisher: Ministry of Economy and Finance (MEF)\n"
+            "- Fiscal years: 2021–2026\n"
+            "- Currency: Cambodian Riel (KHR)\n"
+            "- Unit: Million KHR"
+        )
 
-    with card3:
-        feature_card("🛡️", "Risk Checker", "Check one student with a validated form and keep a history.")
+    st.info(
+        "CamBud analyzes approved Budget Law allocations. "
+        "These figures should not be interpreted as actual cash expenditure "
+        "or budget execution."
+    )
 
-    st.write("")
-    st.subheader("Risk Overview")
-
-    risk_counts = student_df["Risk Level"].value_counts()
-
-    overview1, overview2, overview3 = st.columns(3)
-
-    with overview1:
-        st.metric("🟢 Low Risk", int(risk_counts.get("Low Risk", 0)))
-
-    with overview2:
-        st.metric("🟡 Medium Risk", int(risk_counts.get("Medium Risk", 0)))
-
-    with overview3:
-        st.metric("🔴 High Risk", int(risk_counts.get("High Risk", 0)))
-
+# 8. DASHBOARD PAGE
 elif selected_page == "Dashboard":
-    st.title("Interactive Student Performance Dashboard")
-
+    st.title("Government Budget Dashboard")
     st.write(
-        "Use filters to explore student performance by course, risk level, "
-        "and attendance. The dashboard updates based on your selections."
+        "Explore approved budget allocations by fiscal year, category, "
+        "and government entity."
+    )
+    
+    # Display page-specific filters 
+    filtered_df, missing_amount_count = render_page_filters(
+        "dashboard", include_year=True,
+        include_category=True, include_entity=True
+    )
+    
+    # Calculate budget summary 
+    total_budget, current_budget, capital_budget, total_entities = (
+        calculate_budget_summary(filtered_df)
     )
 
-    # Filters
-    st.subheader("Dashboard Filters")
-
-    filter_col1, filter_col2, filter_col3 = st.columns(3)
-
-    with filter_col1:
-        course_options = ["All"] + sorted(student_df["Course"].unique())
-        selected_course = st.selectbox(
-            "Filter by Course",
-            course_options
-        )
-
-    with filter_col2:
-        risk_options = ["All"] + sorted(student_df["Risk Level"].unique())
-        selected_risk = st.selectbox(
-            "Filter by Risk Level",
-            risk_options
-        )
-
-    with filter_col3:
-        minimum_attendance = st.slider(
-            "Minimum Attendance",
-            0,
-            100,
-            0
-        )
-
-    # Apply filters: every metric, table, and chart below uses filtered_df
-    filtered_df = student_df.copy()
-
-    if selected_course != "All":
-        filtered_df = filtered_df[
-            filtered_df["Course"] == selected_course
-        ]
-
-    if selected_risk != "All":
-        filtered_df = filtered_df[
-            filtered_df["Risk Level"] == selected_risk
-        ]
-
-    filtered_df = filtered_df[
-        filtered_df["Attendance"] >= minimum_attendance
-    ]
-
-    if filtered_df.empty:
-        st.warning("No students match the selected filters. Please adjust the filters.")
-
-    # Filtered metrics
-    st.subheader("Filtered Dashboard Metrics")
-
-    filtered_total_students = len(filtered_df)
-
-    if filtered_total_students > 0:
-        filtered_average_score = filtered_df["Score"].mean()
-        filtered_average_attendance = filtered_df["Attendance"].mean()
-        filtered_high_risk_students = filtered_df[
-            filtered_df["Risk Level"] == "High Risk"
-        ].shape[0]
-    else:
-        filtered_average_score = 0
-        filtered_average_attendance = 0
-        filtered_high_risk_students = 0
+    st.subheader("Budget Overview")
 
     metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
 
     with metric_col1:
-        st.metric("Students", filtered_total_students)
+        st.metric(
+            "Total Approved Budget",
+            f"{format_budget(total_budget)}",
+            "Million KHR"
+        )
 
     with metric_col2:
-        st.metric("Average Score", round(filtered_average_score, 2))
+        st.metric(
+            "Current Expenditure",
+            f"{format_budget(current_budget)}",
+            "Million KHR"
+        )
 
     with metric_col3:
         st.metric(
-            "Average Attendance",
-            f"{round(filtered_average_attendance, 2)}%"
+            "Capital Expenditure",
+            f"{format_budget(capital_budget)}",
+            "Million KHR"
         )
 
     with metric_col4:
-        st.metric("High Risk", filtered_high_risk_students)
-
-    # Grouped summary tables
-    st.subheader("Course Summary")
-
-    if filtered_total_students > 0:
-        course_summary = filtered_df.groupby("Course").agg(
-            Students=("Student Name", "count"),
-            Average_Score=("Score", "mean"),
-            Average_Attendance=("Attendance", "mean"),
-            Average_Study_Hours=("Study Hours", "mean")
-        ).reset_index()
-
-        st.dataframe(course_summary)
-    else:
-        st.info("No course summary available for the selected filters.")
-
-    st.subheader("Risk Level Summary")
-
-    if filtered_total_students > 0:
-        risk_summary = filtered_df["Risk Level"].value_counts().reset_index()
-        risk_summary.columns = ["Risk Level", "Students"]
-
-        st.dataframe(risk_summary)
-    else:
-        st.info("No risk summary available for the selected filters.")
-
-    # Streamlit charts
-    st.subheader("Streamlit Charts")
-
-    chart_col1, chart_col2 = st.columns(2)
-
-    with chart_col1:
-        st.write("Student Scores")
-
-        if filtered_total_students > 0:
-            score_chart = filtered_df.set_index("Student Name")["Score"]
-            st.bar_chart(score_chart)
-        else:
-            st.info("No score chart available.")
-
-    with chart_col2:
-        st.write("Students by Course")
-
-        if filtered_total_students > 0:
-            course_count = filtered_df["Course"].value_counts()
-            st.bar_chart(course_count)
-        else:
-            st.info("No course count chart available.")
-
-    # Plotly interactive charts
-    st.subheader("Interactive Plotly Charts")
-
-    plotly_col1, plotly_col2 = st.columns(2)
-
-    with plotly_col1:
-        st.write("Risk Level Distribution")
-
-        if filtered_total_students > 0:
-            risk_summary_chart = filtered_df["Risk Level"].value_counts().reset_index()
-            risk_summary_chart.columns = ["Risk Level", "Students"]
-
-            fig_risk = px.bar(
-                risk_summary_chart,
-                x="Risk Level",
-                y="Students",
-                color="Risk Level",
-                title="Risk Level Distribution",
-                color_discrete_map={
-                    "Low Risk": "#16A34A",
-                    "Medium Risk": "#F59E0B",
-                    "High Risk": "#DC2626"
-                }
-            )
-
-            st.plotly_chart(fig_risk, width="stretch")
-        else:
-            st.info("No risk distribution chart available.")
-
-    with plotly_col2:
-        st.write("Student Scores by Risk Level")
-
-        if filtered_total_students > 0:
-            fig_score = px.bar(
-                filtered_df,
-                x="Student Name",
-                y="Score",
-                color="Risk Level",
-                title="Student Scores by Risk Level",
-                color_discrete_map={
-                    "Low Risk": "#16A34A",
-                    "Medium Risk": "#F59E0B",
-                    "High Risk": "#DC2626"
-                }
-            )
-
-            st.plotly_chart(fig_score, width="stretch")
-        else:
-            st.info("No score chart available.")
-
-    # Filtered records
-    st.subheader("Filtered Student Records")
-
-    if filtered_total_students > 0:
-        st.dataframe(style_risk_table(filtered_df))
-    else:
-        st.info("No student records to display.")
-
-    st.warning(
-        "Ethics Reminder: Visualizations should support students and guide "
-        "academic support decisions, not label or punish students."
-    )
-
-elif selected_page == "Student Data":
-    st.title("Student Data")
-
-    total_students = len(student_df)
-    average_score = student_df["Score"].mean()
-    average_attendance = student_df["Attendance"].mean()
-    high_risk_students = student_df[
-        student_df["Risk Level"] == "High Risk"
-    ].shape[0]
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.metric("Total Students", total_students)
-
-    with col2:
-        st.metric("Average Score", round(average_score, 2))
-
-    with col3:
-        st.metric("Average Attendance", f"{round(average_attendance, 2)}%")
-
-    with col4:
-        st.metric("High Risk Students", high_risk_students)
-
-    st.write(
-        "This page displays and inspects the dataset loaded from students.csv."
-    )
-
-    st.subheader("Data Inspection")
-
-    st.write("Rows and Columns:", student_df.shape)
-
-    st.write("Column Names:")
-    st.write(student_df.columns.tolist())
-
-    st.write("First 5 Rows:")
-    st.dataframe(student_df.head())
-
-    st.subheader("Full Student Dataset")
-    st.dataframe(student_df)
-
-    # search and filter students
-    st.subheader("Search Students")
-
-    search_col1, search_col2 = st.columns(2)
-
-    with search_col1:
-        search_name = st.text_input("Search by student name", key="search_name")
-
-    with search_col2:
-        search_course = st.selectbox(
-            "Filter by course",
-            ["All"] + list(student_df["Course"].unique()),
-            key="search_course"
+        st.metric(
+            "Government Entities",
+            total_entities
+        )
+    
+    # Display missing budget information
+    if missing_amount_count > 0:
+        st.warning(
+            f"The selected source records contain {missing_amount_count} "
+            "blank budget amount(s). They are excluded from calculations "
+            "and have not been estimated."
         )
 
-    search_result = student_df.copy()
+    # Budget trend and category distribution
+    st.subheader("Budget Visualization")
+    chart_col1, chart_col2 = st.columns(2)
+    
+    with chart_col1:
+        st.write("Approved Budget by Fiscal Year")
 
-    if search_name:
-        search_result = search_result[
-            search_result["Student Name"].str.contains(search_name, case=False)
+        yearly_budget = (
+            filtered_df.groupby("Fiscal Year", as_index=False) # Keep normal year as a normal columns 
+            ["Approved Budget (Million KHR)"].sum()
+        )
+        # Create line chart 
+        fig_yearly = px.line(
+            yearly_budget,
+            x="Fiscal Year",
+            y="Approved Budget (Million KHR)",
+            markers=True,
+            title="Approved Budget Trend",
+            color_discrete_sequence=["#176B9A"]
+        )
+        # Customize the line chart 
+        fig_yearly.update_traces(
+            line=dict(width=3),
+            marker=dict(size=9, color="#38BDF8")
+        )
+        # Display chart
+        st.plotly_chart(
+            prepare_chart(fig_yearly),
+            use_container_width=True
+        )
+        
+    with chart_col2:
+        st.write("Budget by Expenditure Category")
+
+        category_summary = (
+            filtered_df.groupby("Budget Category", as_index=False)
+            ["Approved Budget (Million KHR)"].sum()
+        )
+        # Create a doughnut chart 
+        fig_category = px.pie(
+            category_summary,
+            names="Budget Category",
+            values="Approved Budget (Million KHR)",
+            hole=0.5,
+            title="Current vs Capital Expenditure",
+            color="Budget Category",
+            color_discrete_map={
+                "Current Expenditure": "#176B9A",
+                "Capital Expenditure": "#F59E0B"
+            }
+        )
+        # Display the doughnut chart 
+        st.plotly_chart(
+            prepare_chart(fig_category),
+            use_container_width=True
+        )
+
+    # Largest government entity allocations
+    st.subheader("Top Government Entities by Approved Budget")
+    
+    # Group rank government entities 
+    entity_summary = (
+        filtered_df.groupby("Government Entity", as_index=False)
+        ["Approved Budget (Million KHR)"].sum()
+        .nlargest(10, "Approved Budget (Million KHR)")
+        .sort_values("Approved Budget (Million KHR)")
+    )
+    # Create a horizontal bar chart 
+    fig_entities = px.bar(
+        entity_summary,
+        x="Approved Budget (Million KHR)",
+        y="Government Entity",
+        orientation="h",
+        title="Top 10 Government Entities",
+        color="Approved Budget (Million KHR)",
+        color_continuous_scale=["#BAE6FD", "#176B9A", "#0B2942"]
+    )
+    # Customize and display 
+    fig_entities.update_layout(coloraxis_showscale=False)
+    st.plotly_chart(
+        prepare_chart(fig_entities, height=430),
+        use_container_width=True
+    )
+
+# 9. BUDGET ANALYSIS PAGE
+elif selected_page == "Budget Analysis":
+    st.title("Budget Analysis")
+    st.write(
+        "Compare approved current and capital expenditure allocations "
+        "across selected fiscal years."
+    )
+
+    filtered_df, missing_amount_count = render_page_filters(
+        "budget_analysis", include_year=True,
+        include_category=True, include_entity=False
+    )
+    
+    if missing_amount_count > 0:
+        st.caption(
+            f"{missing_amount_count} source record(s) have blank budget "
+            "amounts and are excluded from calculations."
+        )
+
+    st.subheader("Current vs Capital Expenditure")
+
+    yearly_category = (
+        filtered_df.groupby(
+            ["Fiscal Year", "Budget Category"], as_index=False
+        )["Approved Budget (Million KHR)"].sum()
+    )
+
+    fig_comparison = px.bar(
+        yearly_category,
+        x="Fiscal Year",
+        y="Approved Budget (Million KHR)",
+        color="Budget Category",
+        barmode="group",
+        title="Budget Allocation by Year and Category",
+        color_discrete_map={
+            "Current Expenditure": "#176B9A",
+            "Capital Expenditure": "#F59E0B"
+        }
+    )
+
+    st.plotly_chart(
+        prepare_chart(fig_comparison, height=430),
+        use_container_width=True
+    )
+
+    st.subheader("Budget Category Summary")
+
+    category_summary = (
+        filtered_df.groupby("Budget Category", as_index=False)
+        ["Approved Budget (Million KHR)"].sum()
+        .sort_values("Approved Budget (Million KHR)", ascending=False)
+    )
+
+    category_total = category_summary["Approved Budget (Million KHR)"].sum()
+    if category_total > 0:
+        category_summary["Share (%)"] = (
+            category_summary["Approved Budget (Million KHR)"]
+            / category_total * 100
+        ).round(2)
+
+    st.dataframe(
+        styled_budget_table(category_summary),
+        use_container_width=True,
+        hide_index=True
+    )
+
+# 10. ENTITY ANALYSIS PAGE
+elif selected_page == "Entity Analysis":
+    st.title("Government Entity Analysis")
+    st.write(
+        "Explore and rank government entities according to their "
+        "approved budget allocations."
+    )
+
+    filtered_df, missing_amount_count = render_page_filters(
+        "entity_analysis", include_year=True,
+        include_category=True, include_entity=True
+    )
+    # Calculate government entity ranking 
+    entity_ranking = (
+        filtered_df.groupby("Government Entity", as_index=False)
+        ["Approved Budget (Million KHR)"].sum()
+        .sort_values("Approved Budget (Million KHR)", ascending=False)
+    )
+    # Create a slider to select the number of entities 
+    maximum_entities = max(5, min(30, len(entity_ranking)))
+    selected_top_n = st.slider(
+        "Number of Entities to Display",
+        min_value=5,
+        max_value=maximum_entities,
+        value=min(10, maximum_entities) # Set initial select top 10
+    )
+
+    displayed_entities = (
+        entity_ranking.head(selected_top_n)
+        .sort_values("Approved Budget (Million KHR)")
+    )
+    # Create the entity ranking bar chart 
+    fig_ranking = px.bar(
+        displayed_entities,
+        x="Approved Budget (Million KHR)",
+        y="Government Entity",
+        orientation="h",
+        title=f"Top {selected_top_n} Government Entities",
+        color="Approved Budget (Million KHR)",
+        color_continuous_scale=["#BAE6FD", "#176B9A", "#0B2942"]
+    )
+    fig_ranking.update_layout(coloraxis_showscale=False)
+
+    st.plotly_chart(
+        prepare_chart(fig_ranking, height=max(400, selected_top_n * 35)),
+        use_container_width=True
+    )
+    
+    # Create the government entity ranking table
+    st.subheader("Government Entity Ranking Table")
+
+    entity_ranking.insert(
+        0, "Rank", range(1, len(entity_ranking) + 1)
+    )
+
+    st.dataframe(
+        styled_budget_table(entity_ranking),
+        use_container_width=True,
+        hide_index=True # Hides the default dataframe index 
+    )
+
+# 11. DATA EXPLORER PAGE
+elif selected_page == "Data Explorer":
+    st.title("Budget Data Explorer")
+    st.write(
+        "Search, inspect, and download records from the translated "
+        "Cambodian government budget dataset."
+    )
+
+    filtered_df, missing_amount_count = render_page_filters(
+        "data_explorer", include_year=True,
+        include_category=True, include_entity=True
+    )
+    # Create a search box
+    search_entity = st.text_input(
+        "Search Government Entity",
+        placeholder="Enter a ministry or government entity name..."
+    )
+
+    selected_data = filtered_df.copy()
+
+    if search_entity.strip():
+        selected_data = selected_data[
+            selected_data["Government Entity"].str.contains(
+                search_entity.strip(),
+                case=False,
+                na=False
+            )
         ]
 
-    if search_course != "All":
-        search_result = search_result[search_result["Course"] == search_course]
+    st.subheader("Dataset Information")
+    st.write("Rows and columns:", budget_df.shape)
+    st.write("Column names:", budget_df.columns.tolist())
 
-    if len(search_result) > 0:
-        st.write(f"Found {len(search_result)} student(s).")
-        st.dataframe(style_risk_table(search_result))
+    st.subheader("Filtered Budget Records")
+    st.caption(f"{len(selected_data):,} records displayed")
 
-        st.download_button(
-            label="Download Search Result",
-            data=search_result.to_csv(index=False),
-            file_name="search_result.csv",
-            mime="text/csv"
-        )
-    else:
-        st.warning("No student found.")
+    st.dataframe(
+        styled_budget_table(selected_data),
+        use_container_width=True,
+        hide_index=True  # Hides the default row index
+    )
+    # Prepare CSV
+    csv_data = selected_data.to_csv(index=False).encode("utf-8-sig")
 
-elif selected_page == "Risk Checker":
-    st.title("Single Student Risk Checker")
+    st.download_button(
+        "Download Filtered Budget Data",
+        data=csv_data,
+        file_name="CamBud_Filtered_Budget_Data.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
 
+    st.info(
+        "Blank budget amounts in the original source are displayed as "
+        "'Not reported' in formatted tables."
+    )
+
+# 12. ABOUT PAGE
+elif selected_page == "About":
+    st.title("About CamBud")
+
+    st.write("Project Name: CamBud")
+    st.write("Project Title: Cambodia Budget Analytics")
+    st.write("Course: Web Application Development")
+    st.write("Framework: Python and Streamlit")
+    st.write("Styling: CSS")
+    st.write("Data Publisher: Ministry of Economy and Finance (MEF), Cambodia")
+
+    st.subheader("Project Purpose")
     st.write(
-        "Enter student information to check risk level. "
-        "The result is based on score and attendance."
+        "CamBud provides an accessible way to explore approved government "
+        "budget allocations across fiscal years, expenditure categories, "
+        "and government entities."
     )
 
-    st.info(
-        "This tool is for academic support. Risk results should help students, "
-        "not label or punish them."
-    )
-
-    # Form: nothing runs until "Check Risk" is clicked
-    # Nothing is processed until the submit button is clicked.
-    # Score and Attendance are limited to 0-100 by st.number_input itself.
-    with st.form("risk_checker_form"):
-        input_name = st.text_input("Student Name")
-        input_score = st.number_input("Score", 0, 100, 50)
-        input_attendance = st.number_input("Attendance", 0, 100, 50)
-
-        submitted = st.form_submit_button("Check Risk")
-
-    # Validation, risk calculation, and feedback
-    if submitted:
-        clean_name = input_name.strip()
-
-        if clean_name == "":
-            st.warning("Please enter the student name.")
-        elif not any(char.isalpha() for char in clean_name):
-            st.warning("Student name must contain at least one letter.")
-        else:
-            risk_result = get_risk_level(input_score, input_attendance)
-
-            result = {
-                "Student Name": clean_name,
-                "Score": input_score,
-                "Attendance": input_attendance,
-                "Risk Level": risk_result
-            }
-
-            st.session_state["risk_history"].append(result)
-            st.session_state["history_cleared"] = False
-
-            if risk_result == "Low Risk":
-                st.success("Risk Level: Low Risk")
-                st.write("Student appears on track.")
-            elif risk_result == "Medium Risk":
-                st.warning("Risk Level: Medium Risk")
-                st.write("Monitor progress and provide guidance.")
-            else:
-                st.error("Risk Level: High Risk")
-                st.write("Student may need additional support.")
-
-            st.write("Student Name:", clean_name)
-            st.write("Score:", input_score)
-            st.write("Attendance:", input_attendance)
-
-            # Progress bars
-            bar_col1, bar_col2 = st.columns(2)
-
-            with bar_col1:
-                st.write(f"Score: {input_score}/100")
-                st.progress(int(input_score) / 100)
-
-            with bar_col2:
-                st.write(f"Attendance: {input_attendance}%")
-                st.progress(int(input_attendance) / 100)
-
-    # Recent risk checks (stored in session state)
-    st.subheader("Recent Risk Checks")
-
-    if len(st.session_state["risk_history"]) > 0:
-        history_df = pd.DataFrame(st.session_state["risk_history"])
-
-        st.dataframe(style_risk_table(history_df))
-
-        st.button("Clear History", on_click=clear_risk_history)
-    else:
-        if st.session_state["history_cleared"]:
-            st.success("Risk check history cleared.")
-        st.info("No risk checks yet.")
-
-    st.warning(
-        "Ethics Reminder: Risk results should be used as guidance for support, "
-        "not as final judgment about a student."
-    )
-
-else:
-    st.title("About")
-    st.write("This app is part of Lab 05.")
-    st.write("Course: Web App Development for Data Science")
-    st.write("Project Theme: EduRisk Analytics")
-    st.write("Topic: Visualization and Interactivity")
-
-    st.info(
-        "This version improves the Dashboard page using grouped summaries, "
-        "interactive filters, Streamlit charts, and Plotly charts."
+    st.subheader("Data Source")
+    st.markdown(
+        "[Current and Capital Expenditure by Entity of Budget Law "
+        "in Brief FY2021–FY2026]"
+        "(https://data.mef.gov.kh/datasets/pd_69942a5e9eaed400071a6ca9)"
     )
 
     st.warning(
-        "Ethics Reminder: Student performance visualizations should be used responsibly "
-        "to support learning and student success."
+        "Important: This dataset represents approved Budget Law allocations. "
+        "It does not, by itself, show actual expenditure, budget execution, "
+        "or remaining budget."  
     )
 
-    # tools cards and risk rules
-    st.subheader("Tools Used")
-
-    tool1, tool2, tool3, tool4 = st.columns(4)
-
-    with tool1:
-        feature_card("🐍", "Python", "Main programming language.")
-
-    with tool2:
-        feature_card("🐼", "Pandas", "Loads and processes students.csv.")
-
-    with tool3:
-        feature_card("🎈", "Streamlit", "Builds the interactive pages.")
-
-    with tool4:
-        feature_card("📈", "Plotly", "Draws interactive charts.")
-
-    st.write("")
-
-    with st.expander("How is the risk level calculated?"):
-        st.write("High Risk: score below 60 or attendance below 60.")
-        st.write("Medium Risk: score below 75 or attendance below 75.")
-        st.write("Low Risk: score and attendance are both 75 or higher.")
+# 13. FOOTER
+st.divider()
+st.caption(
+    "CamBud | Cambodia Budget Analytics · Source: Ministry of Economy and "
+    "Finance (MEF), Cambodia · Amounts are expressed in million KHR."
+)

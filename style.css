@@ -1,0 +1,394 @@
+/*
+=============================================================================
+CAMBUD — CAMBODIA BUDGET ANALYTICS
+Design adapted from the user's supplied EduRisk Lab 05 style.css.
+
+Design goals:
+- Keep the same simple CSS organization and Streamlit layout approach.
+- Use Times New Roman throughout the interface.
+- Use navy, blue, sky blue, and white as the main theme.
+- Use distinct chart colors for clear category comparisons.
+- Improve readability without changing the app's page structure.
+=============================================================================
+*/
+
+/* --------------------------------------------------------------------------
+1. COLOR PALETTE
+-------------------------------------------------------------------------- */
+:root {
+    --dark-blue: #123B5D;
+    --deep-blue: #0B2942;
+    --primary-blue: #176B9A;
+    --sky-blue: #38BDF8;
+    --light-blue: #E0F2FE;
+    --page-background: #F0F9FF;
+    --card-background: #FFFFFF;
+    --text-color: #183247;
+    --muted-text: #526779;
+    --border-color: #BAE6FD;
+
+    /* Chart colors complement the main blue theme. */
+    --chart-teal: #0D9488;
+    --chart-amber: #F59E0B;
+    --chart-violet: #8B5CF6;
+    --chart-coral: #E76F51;
+}
+
+/* --------------------------------------------------------------------------
+2. GLOBAL FONT AND PAGE BACKGROUND
+-------------------------------------------------------------------------- */
+html,
+body,
+.stApp,
+.stApp *,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+input,
+textarea,
+button,
+select,
+option {
+    font-family: "Times New Roman", Times, serif !important;
+}
+
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"] {
+    background-color: var(--page-background);
+    color: var(--text-color);
+}
+
+/* Preserve Streamlit's built-in icon fonts. */
+.material-icons,
+.material-symbols-rounded,
+.material-symbols-outlined,
+[data-testid="stIconMaterial"] {
+    font-family: "Material Symbols Rounded", "Material Icons", sans-serif !important;
+    font-weight: normal !important;
+    font-style: normal !important;
+}
+
+/* --------------------------------------------------------------------------
+3. MAIN CONTENT SPACING
+-------------------------------------------------------------------------- */
+section.main > div {
+    max-width: 1600px;
+    padding: 1.7rem 2rem 2.4rem;
+}
+
+/* --------------------------------------------------------------------------
+4. TYPOGRAPHY
+-------------------------------------------------------------------------- */
+h1,
+h2,
+h3,
+h4 {
+    color: var(--dark-blue) !important;
+    font-family: "Times New Roman", Times, serif !important;
+    font-weight: 700 !important;
+    letter-spacing: 0 !important;
+}
+
+h1 {
+    font-size: 32px !important;
+    line-height: 1.2 !important;
+    margin-bottom: 0.5rem !important;
+}
+
+h2 {
+    font-size: 25px !important;
+    line-height: 1.3 !important;
+}
+
+h3 {
+    font-size: 21px !important;
+    line-height: 1.35 !important;
+}
+
+h4 {
+    font-size: 18px !important;
+    line-height: 1.4 !important;
+}
+
+p,
+li {
+    color: var(--text-color);
+    font-size: 17px;
+    line-height: 1.55;
+}
+
+[data-testid="stCaptionContainer"] {
+    color: var(--muted-text);
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+/* --------------------------------------------------------------------------
+5. SIDEBAR NAVIGATION
+-------------------------------------------------------------------------- */
+section[data-testid="stSidebar"] {
+    background-color: var(--dark-blue);
+    border-right: 1px solid var(--deep-blue);
+}
+
+section[data-testid="stSidebar"] > div {
+    padding: 1.5rem 1rem;
+}
+
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3,
+section[data-testid="stSidebar"] h4,
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] * {
+    color: #FFFFFF !important;
+}
+
+section[data-testid="stSidebar"] h1 {
+    font-size: 27px !important;
+}
+
+section[data-testid="stSidebar"] label {
+    font-size: 16px !important;
+}
+
+section[data-testid="stSidebar"] [data-testid="stRadio"] label {
+    padding: 0.35rem 0.5rem;
+    border-radius: 8px;
+    transition: background-color 0.2s ease;
+}
+
+section[data-testid="stSidebar"] [data-testid="stRadio"] label:hover {
+    background-color: #245779;
+}
+
+section[data-testid="stSidebar"] a {
+    color: #7DD3FC !important;
+}
+
+/* --------------------------------------------------------------------------
+6. DASHBOARD METRIC CARDS
+-------------------------------------------------------------------------- */
+[data-testid="stMetric"] {
+    background-color: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-top: 4px solid var(--sky-blue);
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(18, 59, 93, 0.05);
+}
+
+div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"])
+> div:nth-child(1) [data-testid="stMetric"] {
+    border-top-color: #38BDF8;
+}
+
+div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"])
+> div:nth-child(2) [data-testid="stMetric"] {
+    border-top-color: #176B9A;
+}
+
+div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"])
+> div:nth-child(3) [data-testid="stMetric"] {
+    border-top-color: #0D9488;
+}
+
+div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"])
+> div:nth-child(4) [data-testid="stMetric"] {
+    border-top-color: #F59E0B;
+}
+
+[data-testid="stMetricLabel"] {
+    color: var(--primary-blue) !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+}
+
+[data-testid="stMetricValue"] {
+    color: var(--dark-blue) !important;
+    font-size: 25px !important;
+    font-weight: 700 !important;
+}
+
+/* --------------------------------------------------------------------------
+7. BUTTONS
+-------------------------------------------------------------------------- */
+.stButton > button,
+[data-testid="stFormSubmitButton"] > button {
+    background-color: var(--primary-blue);
+    color: #FFFFFF;
+    border: 1px solid var(--primary-blue);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 16px;
+    font-weight: 700;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.stButton > button:hover,
+[data-testid="stFormSubmitButton"] > button:hover {
+    background-color: var(--dark-blue);
+    color: #FFFFFF;
+    border-color: var(--dark-blue);
+}
+
+.stDownloadButton > button {
+    background-color: var(--sky-blue);
+    color: var(--deep-blue);
+    border: 1px solid var(--sky-blue);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.stDownloadButton > button:hover {
+    background-color: var(--primary-blue);
+    color: #FFFFFF;
+    border-color: var(--primary-blue);
+}
+
+/* --------------------------------------------------------------------------
+8. INPUTS AND SELECT BOXES
+-------------------------------------------------------------------------- */
+.stTextInput input,
+.stNumberInput input,
+.stTextArea textarea,
+.stSelectbox div[data-baseweb="select"],
+.stDateInput input {
+    border-radius: 8px;
+    font-size: 16px;
+}
+
+.stTextInput input:focus,
+.stNumberInput input:focus,
+.stTextArea textarea:focus {
+    border-color: var(--primary-blue);
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+/* --------------------------------------------------------------------------
+9. EXPANDERS AND FILTERS
+-------------------------------------------------------------------------- */
+[data-testid="stExpander"] {
+    background-color: #FFFFFF;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+}
+
+[data-testid="stSelectbox"],
+[data-testid="stMultiSelect"] {
+    background-color: #FFFFFF;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    padding: 8px 10px 5px;
+}
+
+[data-testid="stSelectbox"] label,
+[data-testid="stMultiSelect"] label {
+    color: var(--dark-blue) !important;
+    font-weight: 700 !important;
+    font-size: 15px !important;
+}
+
+[data-baseweb="select"] > div {
+    border-radius: 7px;
+    border-color: var(--border-color);
+}
+
+/* --------------------------------------------------------------------------
+10. DATA TABLES
+-------------------------------------------------------------------------- */
+[data-testid="stDataFrame"],
+[data-testid="stTable"] {
+    background-color: #FFFFFF;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 7px rgba(18, 59, 93, 0.045);
+}
+
+[data-testid="stDataFrame"] [role="columnheader"] {
+    background-color: var(--light-blue) !important;
+    color: var(--dark-blue) !important;
+    font-family: "Times New Roman", Times, serif !important;
+    font-weight: 700 !important;
+}
+
+[data-testid="stDataFrame"] [role="gridcell"] {
+    color: var(--text-color) !important;
+    font-family: "Times New Roman", Times, serif !important;
+}
+
+/* --------------------------------------------------------------------------
+11. CHART CONTAINERS
+-------------------------------------------------------------------------- */
+[data-testid="stPlotlyChart"] {
+    background-color: #FFFFFF;
+    border: 1px solid #D6EAF5;
+    border-radius: 10px;
+    padding: 6px;
+    box-shadow: 0 2px 7px rgba(18, 59, 93, 0.045);
+}
+
+/* --------------------------------------------------------------------------
+12. ALERTS AND OTHER COMPONENTS
+-------------------------------------------------------------------------- */
+[data-testid="stAlert"] {
+    border-radius: 9px;
+    padding: 10px 14px;
+}
+
+[data-testid="stCheckbox"] label {
+    color: var(--dark-blue);
+    font-size: 16px;
+}
+
+hr {
+    border-color: var(--border-color);
+}
+
+header[data-testid="stHeader"] {
+    background-color: var(--page-background);
+}
+
+/* --------------------------------------------------------------------------
+13. RESPONSIVE DESIGN
+-------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    section.main > div {
+        padding: 1.1rem 0.9rem 1.7rem;
+    }
+
+    h1 {
+        font-size: 27px !important;
+    }
+
+    h2 {
+        font-size: 22px !important;
+    }
+
+    h3 {
+        font-size: 19px !important;
+    }
+
+    p,
+    li {
+        font-size: 16px;
+    }
+
+    [data-testid="stMetric"] {
+        padding: 12px;
+    }
+
+    [data-testid="stMetricValue"] {
+        font-size: 22px !important;
+    }
+
+    [data-testid="stSelectbox"],
+    [data-testid="stMultiSelect"] {
+        padding: 7px 8px 4px;
+    }
+}
